@@ -115,7 +115,7 @@ disp('--------------------------------------------------------------------------
 disp(' / Choose from')
 disp('-------------------------------------------------------------------------------')
 disp(' ')
-disp(' 1  ->  Learn unknown parameters (Newton-Raphson EM)')% dont need that
+disp(' 1  ->  Learn unknown parameters (Newton-Raphson EM)')
 disp(' 2  ->  Learn initial values x_0 (SKS)')
 disp(' 3  ->  Offline estimation using the Switching Kalman Filter (SKF)')
 disp(' 4  ->  Offline estimation using the Switching Kalman Smoother (SKS)')
