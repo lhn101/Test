@@ -121,6 +121,7 @@ disp(' 3  ->  Offline estimation using the Switching Kalman Filter (SKF)')
 disp(' 4  ->  Offline estimation using the Switching Kalman Smoother (SKS)')
 disp(' 5  ->  Online estimation using Switching Kalman Filter and EM algorithm')
 % It must to add the option 6 
+% remove option 5
 disp(' ')
 disp(' 11 ->  Modify current parameter values')
 disp(' 12 ->  Modify current initial x_0 values')
