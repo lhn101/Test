@@ -192,7 +192,6 @@ elseif user_inputs.inp_1==3
     estim=state_estimation(data,model,option);
     plot_estimations(estim,data,model,option) 
     %test
-    %i dont want this please remove it. I cant not remove it
 elseif user_inputs.inp_1==11
     disp(' ')
     disp('-------------------------------------------------------------------------------')
