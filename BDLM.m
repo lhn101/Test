@@ -199,7 +199,6 @@ elseif user_inputs.inp_1==4
     disp(' ')
     estim=state_estimation(data,model,option);
     plot_estimations(estim,data,model,option)    
-    
 elseif user_inputs.inp_1==11
     disp(' ')
     disp('-------------------------------------------------------------------------------')
