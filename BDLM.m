@@ -115,7 +115,7 @@ disp('--------------------------------------------------------------------------
 disp(' / Choose from')
 disp('-------------------------------------------------------------------------------')
 disp(' ')
-disp(' 1  ->  Learn unknown parameters (Newton-Raphson EM)')
+disp(' 1  ->  Learn unknown parameters')
 disp(' 2  ->  Learn initial values x_0 (SKS)')
 disp(' 3  ->  Offline estimation using the Switching Kalman Filter (SKF)')
 disp(' 4  ->  Offline estimation using the Switching Kalman Smoother (SKS)')
@@ -134,13 +134,14 @@ tic %ititialize timing variable
 if  user_inputs.inp_1==1
     disp(' ')
     disp('-------------------------------------------------------------------------------')
-    disp([num2str(user_inputs.inp_1) '/ Learn unknown parameters (Newton-Raphson EM)'])
+    disp([num2str(user_inputs.inp_1) '/ Learn unknown parameters'])
     disp('-------------------------------------------------------------------------------')
     disp(' ')
-    disp(' 1  ->  Without optimizing the initial values of hidden components')
-    disp(' 2  ->  With optimizing the initial values of hidden components')
+    disp(' 1  ->  Newton-Raphson EM without optimizing the initial values of hidden components')
+    disp(' 2  ->  Newton-Raphson EM with optimizing the initial values of hidden components')
+    disp(' 3  ->  MCMC without optimizing the initial values of hidden components')
     disp(' ')
-    option.iteration_limit_calibration=30;
+    option.iteration_limit_calibration=60;
     option.time_limit_calibration=60;      %[min]
     option.iteration_limit_initValues=4;  % Number of iterations for multi-pass 
     user_inputs.inp_2 = input('Selection : ');
@@ -153,10 +154,13 @@ if  user_inputs.inp_1==1
         end
         model.parameter(model.p_ref)=optim.parameter_opt(model.p_ref);
     elseif user_inputs.inp_2==2
-        user_inputs.inp_2 =  input(' Training period for the initial values (years) : ');
+        user_inputs.inp_3 =  input(' Training period for the initial values (years) : ');
         disp(' ')
-        option.trainingSmoother=[1,user_inputs.inp_2*365];%day
+        option.trainingSmoother=[1,user_inputs.inp_3*365];%day
         [model,~]=train_multiPass(data,model,option);
+    elseif user_inputs.inp_2==3
+        [optim]=MCMC_optimization_V3(data,model,option);
+        model.parameter(model.p_ref)=optim.parameter_opt(model.p_ref);
     end
     disp(' ')
     save(strcat(cd,'/saved_files/',option.name,'_data.mat'));
@@ -190,15 +194,17 @@ elseif user_inputs.inp_1==3
     disp('-------------------------------------------------------------------------------')
     disp(' ')
     estim=state_estimation(data,model,option);
-    plot_estimations(estim,data,model,option) 
+    plot_estimations(estim,data,model,option)
+   
 elseif user_inputs.inp_1==4
     disp(' ')
     disp('-------------------------------------------------------------------------------')
-    disp('3/ Offline estimation of x_t using the Switching Kalman Filter (SKF)')
+    disp('4/ Offline estimation of x_t using the Switching Kalman Smoother (SKS)')
     disp('-------------------------------------------------------------------------------')
     disp(' ')
-    estim=state_estimation(data,model,option);
-    plot_estimations(estim,data,model,option)    
+    estim=state_estimation(data,model,option,'smooth',1);
+    plot_estimations(estim,data,model,option)  
+    
 elseif user_inputs.inp_1==11
     disp(' ')
     disp('-------------------------------------------------------------------------------')
@@ -364,6 +370,7 @@ elseif user_inputs.inp_1==14
     end
     disp([' 4  ->  Plot DH''s hidden covariate ' msg])
     disp([' 5  ->  Plot DH''s hidden covariate for entire dataset ' msg])
+    disp([' 6  ->  Plot MCMC diagnostics ' msg])
     disp(' [] ->  No plot')
     
     disp(' ')
@@ -378,6 +385,8 @@ elseif user_inputs.inp_1==14
         plot_DRHC(model,option)
     elseif user_inputs.inp_2==5
         plot_DRHC_allDataset(data,model,option)
+    elseif user_inputs.inp_2==6
+        plotDiagnosticsMCMC(data,model,optim.chains.smpTR,optim.chains.logpost,1,1,3)
     end
     
 elseif user_inputs.inp_1==15
