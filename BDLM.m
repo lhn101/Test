@@ -115,13 +115,11 @@ disp('--------------------------------------------------------------------------
 disp(' / Choose from')
 disp('-------------------------------------------------------------------------------')
 disp(' ')
-disp(' 1  ->  Learn unknown parameters (Newton-Raphson EM)')
+disp(' 1  ->  Learn unknown parameters')
 disp(' 2  ->  Learn initial values x_0 (SKS)')
 disp(' 3  ->  Offline estimation using the Switching Kalman Filter (SKF)')
 disp(' 4  ->  Offline estimation using the Switching Kalman Smoother (SKS)')
 disp(' 5  ->  Online estimation using Switching Kalman Filter and EM algorithm')
-disp(' 6  ->  LSTM/Deep learning correction-term calibration')%new feature
-
 disp(' ')
 disp(' 11 ->  Modify current parameter values')
 disp(' 12 ->  Modify current initial x_0 values')
@@ -136,75 +134,39 @@ tic %ititialize timing variable
 if  user_inputs.inp_1==1
     disp(' ')
     disp('-------------------------------------------------------------------------------')
-    disp([num2str(user_inputs.inp_1) '/ Learn unknown parameters (Newton-Raphson EM)'])
+    disp([num2str(user_inputs.inp_1) '/ Learn unknown parameters'])
     disp('-------------------------------------------------------------------------------')
     disp(' ')
-    disp(' 1  ->  Without optimizing the initial values of hidden components')
-    disp(' 2  ->  With optimizing the initial values of hidden components')
+    disp(' 1  ->  Newton-Raphson EM without optimizing the initial values of hidden components')
+    disp(' 2  ->  Newton-Raphson EM with optimizing the initial values of hidden components')
+    disp(' 3  ->  MCMC without optimizing the initial values of hidden components')
     disp(' ')
-    option.iteration_limit_calibration=inf;
+    option.iteration_limit_calibration=60;
     option.time_limit_calibration=60;      %[min]
-    
+    option.iteration_limit_initValues=4;  % Number of iterations for multi-pass 
     user_inputs.inp_2 = input('Selection : ');
     disp(' ')
     if user_inputs.inp_2==1
-       [optim]=NR_EM_V2(data,model,option);
-       %[optim]=NR_EM(data,model,option);
-       model.parameter(model.p_ref)=optim.parameter_opt(model.p_ref);
+        if strcmp(option.computing_method,'serial')
+            [optim]=NR_EM_S(data,model,option);
+        elseif strcmp(option.computing_method,'parallel')
+            [optim]=NR_EM_P(data,model,option);
+        end
+        model.parameter(model.p_ref)=optim.parameter_opt(model.p_ref);
     elseif user_inputs.inp_2==2
         user_inputs.inp_3 =  input(' Training period for the initial values (years) : ');
-        option.iteration_limit_initValues=10;
-        start=1;
-        loop=0;
-        while start
-            loop=loop+1;            
-            model.initX_prev=model.initX;  % Save the previous initial values x_t by defaut or optimized using SKS
-            model.initV_prev=model.initV;
-            model.initS_prev=model.initS;
-            
-            [optim]=NR_EM_V2(data,model,option);
-            %[optim]=NR_EM(data,model,option);
-            model.parameter(model.p_ref)=optim.parameter_opt(model.p_ref);
-            log_lik_loop=optim.log_lik;  % Save the previous log-likelihood from EM_NR
-            
-            if all(optim.converged)||loop==option.iteration_limit_initValues
-                break
-            end
-            
-            training_period=[1,user_inputs.inp_3*365]; %day
-            training_start_idx=find(abs(data.timestamps-data.timestamps(1)-training_period(1)+1)==...
-                                min(abs(data.timestamps-data.timestamps(1)-training_period(1)+1)),1,'first');
-            training_end_idx=find(abs(data.timestamps-data.timestamps(1)-training_period(2)+1)==...
-                                min(abs(data.timestamps-data.timestamps(1)-training_period(2)+1)),1,'first');
-            data_train=data;
-            data_train.timestamps=data.timestamps(training_start_idx:training_end_idx);
-            data_train.values=data.values(training_start_idx:training_end_idx,:);
-            
-            if isfield(data,'ref') % Reference data
-                data_train.ref=data.ref(training_start_idx:training_end_idx,:);
-            end
-            
-            data_train.dt_steps=data.dt_steps(training_start_idx:training_end_idx);
-            data_train.nb_steps=length(training_start_idx:training_end_idx);
-            estim=state_estimation(data_train,model,option,'smooth',1,'disp_flag',0);
-            
-            for i=1:model.nb_class
-                model.initX{i}=estim.x_M{i}(:,1);
-                model.initV{i}=estim.V_M{i}(:,:,1);
-                model.initS{i}=estim.S(1,i);
-            end
-            
-            [~,~,~,~,log_lik_testInitValues,~,~]=SKF(data,model,option); % Calculate log-likelihood with initial value x_t optimized using SKS
-            if log_lik_testInitValues<log_lik_loop                       % Make sure that we end up with the better log-likelihood using these values
-                model.initX=model.initX_prev;                            % otherwise we re-use the previous initial values x_t 
-                model.initV=model.initV_prev;
-                model.initS=model.initS_prev;
-            end
-        end 
+        disp(' ')
+        option.trainingSmoother=[1,user_inputs.inp_3*365];%day
+        [model,~]=train_multiPass(data,model,option);
+    elseif user_inputs.inp_2==3
+        [optim]=MCMC_optimization_V3(data,model,option);
+        model.parameter(model.p_ref)=optim.parameter_opt(model.p_ref);
     end
+    disp(' ')
     save(strcat(cd,'/saved_files/',option.name,'_data.mat'));
     disp(['    files saved as: ' cd '/saved_files/' option.name '_data.mat']);
     disp('    ->done.')
+    
 elseif user_inputs.inp_1==2
     disp(' ')
     disp('-------------------------------------------------------------------------------')
@@ -213,20 +175,9 @@ elseif user_inputs.inp_1==2
     disp(' ')
     user_inputs.inp_2 =  input(' Training period for the initial values (years) : ');
     disp(' ')
-    training_period=[1,user_inputs.inp_2*365];%day
-    training_start_idx=find(abs(data.timestamps-data.timestamps(1)-training_period(1)+1)==...
-                        min(abs(data.timestamps-data.timestamps(1)-training_period(1)+1)),1,'first');
-    training_end_idx=find(abs(data.timestamps-data.timestamps(1)-training_period(2)+1)==...
-                        min(abs(data.timestamps-data.timestamps(1)-training_period(2)+1)),1,'first');
-    data_train=data;
-    data_train.timestamps=data.timestamps(training_start_idx:training_end_idx);
-    data_train.values=data.values(training_start_idx:training_end_idx,:);
-    if isfield(data,'ref') % Reference data
-        data_train.ref=data.ref(training_start_idx:training_end_idx,:);
-    end
-    data_train.dt_steps=data.dt_steps(training_start_idx:training_end_idx);
-    data_train.nb_steps=length(training_start_idx:training_end_idx);
-    estim=state_estimation(data_train,model,option,'smooth',1,'disp_flag',0);
+    option.trainingSmoother=[1,user_inputs.inp_2*365];%day
+    [data_trainSmoother]=data_selection(data,option);
+    estim=state_estimation(data_trainSmoother,model,option,'smooth',1,'disp_flag',0);
     for i=1:model.nb_class
         model.initX{i}=estim.x_M{i}(:,1);
         model.initV{i}=estim.V_M{i}(:,:,1);
@@ -242,104 +193,17 @@ elseif user_inputs.inp_1==3
     disp('3/ Offline estimation of x_t using the Switching Kalman Filter (SKF)')
     disp('-------------------------------------------------------------------------------')
     disp(' ')
-    if  ~option.onl_plot
-        estim=state_estimation(data,model,option);
-        disp(' ')
-        disp('-----------------------------------------')
-        disp('    Filter plot - Offline calibration using EM')
-        plot_estimations(estim,data,model,option)
-    else
-        disp(' ')
-        disp('-----------------------------------------')
-        disp('    Filter plot - Online calibration using EM ')
-        plot_estimations(estim.filter,data,model,option)
-
-    end
-    
+    estim=state_estimation(data,model,option);
+    plot_estimations(estim,data,model,option)
+   
 elseif user_inputs.inp_1==4
     disp(' ')
     disp('-------------------------------------------------------------------------------')
     disp('4/ Offline estimation of x_t using the Switching Kalman Smoother (SKS)')
     disp('-------------------------------------------------------------------------------')
     disp(' ')
-    if  ~option.onl_plot
-        estim=state_estimation(data,model,option,'smooth',1);
-        disp(' ')
-        disp('--------------------------------------------')
-        disp('    Smoother plot - Offline calibration using EM ')
-        plot_estimations(estim,data,model,option)
-    else
-        disp(' ')
-        disp('----------------------------------------')
-        disp('    Smoother plot - Online calibration using EM ')
-        plot_estimations(estim.smooth,data,model,option,'smooth',1)        
-    end
-elseif user_inputs.inp_1==5
-    disp(' ')
-    disp('-------------------------------------------------------------------------------')
-    disp('5/ Online estimation using Switching Kalman Filter and EM algorithm')
-    disp('-------------------------------------------------------------------------------')
-    disp(' ')
-    option.iteration_limit_calibration=400;
-    option.time_limit_calibration=60;%[min]
-    [estim]=online_calibration_NR_EM_V2(data,model,option,'filter_smoother',0);
-    option.onl_plot=1;
-    save(strcat(cd,'/saved_files/',option.name,'_data.mat'));
-    disp(['    files saved as: ' cd '/saved_files/' option.name '_data.mat']);
-    disp('    ->done.')
-    plot_estimations(estim.filter,data,model,option) 
-    
-elseif user_inputs.inp_1==6
-    disp(' ')
-    disp('-------------------------------------------------------------------------------')
-    disp('6/ LSTM/Deep learning correction-term training')
-    disp('-------------------------------------------------------------------------------')
-    disp(' ')
-    %% Redefine the dataset for the training perior only
-    data_train=data; 
-    data_train.timestamps=data.timestamps(option.training_start_idx:option.training_end_idx);
-    data_train.values=data.values(option.training_start_idx:option.training_end_idx,:);
-    data_train.dt_steps=data.dt_steps(option.training_start_idx:option.training_end_idx);
-    data_train.nb_steps=length(option.training_start_idx:option.training_end_idx);
     estim=state_estimation(data,model,option,'smooth',1);
-    
-    %% identify index for DL hidden state variables
-    model.DL.x_idx=[];
-    for i=1:length(model.initX);
-        if strcmp(model.hidden_states_names{1}{i,1}(4:5),'DL')
-            model.DL.x_idx=[model.DL.x_idx i];   
-        end
-    end
-    
-    %% identify index for DL \sigma and \phi parameters
-
-    model.DL.phi_idx=[];
-    model.DL.sigma_idx=[];
-    for i=1:length(model.param_properties);
-        if strcmp(model.param_properties{i,1},'\sigma')&&strcmp(model.param_properties{i,2},'DL')
-            model.DL.sigma_idx=[model.DL.sigma_idx i];   
-        end
-        if strcmp(model.param_properties{i,1},'\phi')&&strcmp(model.param_properties{i,2},'DL')
-            model.DL.phi_idx=[model.DL.phi_idx i];   
-        end
-    end
-    
-    %% Identify normalization constant
-    model.DL.norm=sqrt(var(estim.x(model.DL.x_idx,:))+mean(estim.V(model.DL.x_idx,:)))*4;
-    
-    %% Train the LSTM model
-    [Q_DL]=LSTM_DL_train(estim.x(model.DL.x_idx,:),estim.V(model.DL.x_idx,:),option.name,model.DL.norm);
-
-    %% Modify DL parameters
-    model.parameter(model.DL.phi_idx)=0;
-    model.parameter(model.DL.sigma_idx)=sqrt(Q_DL);
-    model.param_properties{model.DL.phi_idx,5}=[nan,nan];
-    
-    clear data_train i 
-    
-    save(strcat(cd,'/saved_files/',option.name,'_data.mat'));
-    disp(['    files saved as: ' cd '/saved_files/' option.name '_data.mat']);
-    disp('    ->done.')
+    plot_estimations(estim,data,model,option)  
     
 elseif user_inputs.inp_1==11
     disp(' ')
@@ -505,6 +369,8 @@ elseif user_inputs.inp_1==14
         
     end
     disp([' 4  ->  Plot DH''s hidden covariate ' msg])
+    disp([' 5  ->  Plot DH''s hidden covariate for entire dataset ' msg])
+    disp([' 6  ->  Plot MCMC diagnostics ' msg])
     disp(' [] ->  No plot')
     
     disp(' ')
@@ -517,6 +383,10 @@ elseif user_inputs.inp_1==14
         plot_time_steps(data,option)
     elseif user_inputs.inp_2==4
         plot_DRHC(model,option)
+    elseif user_inputs.inp_2==5
+        plot_DRHC_allDataset(data,model,option)
+    elseif user_inputs.inp_2==6
+        plotDiagnosticsMCMC(data,model,optim.chains.smpTR,optim.chains.logpost,1,1,3)
     end
     
 elseif user_inputs.inp_1==15
